@@ -10,7 +10,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallbackProc(
 	const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
 	void* pUserData) {
 
-	if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+	if(messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
 		printf("Debug Callback: %s \n", pCallbackData->pMessage);
 
 	return VK_FALSE;
@@ -29,27 +29,27 @@ int main()
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-	GLFWwindow* window = glfwCreateWindow(200, 200, "vkCmdInit", NULL, NULL);
-
-	InitializationStruct initstruct = createApplication("None", "X", VK_MAKE_VERSION(1, 0, 0), VK_MAKE_VERSION(1, 0, 0), VK_API_VERSION_1_0);
-	addExtension(addExtension(addExtension(&initstruct, VK_EXT_DEBUG_UTILS_EXTENSION_NAME), VK_KHR_SURFACE_EXTENSION_NAME), VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
-	withSurfaceGLFW(withDebugOutput1(startInstance(&initstruct), DebugCallbackProc, NULL), window);
-
+	GLFWwindow* window = glfwCreateWindow(200,200,"vkCmdInit", nullptr, nullptr);
+	
+	vki::InitializationStruct initstruct = vki::createApplication("None","X",VK_MAKE_VERSION(1,0,0),VK_MAKE_VERSION(1,0,0), VK_API_VERSION_1_0);
+	vki::addExtension(vki::addExtension(vki::addExtension(initstruct, VK_EXT_DEBUG_UTILS_EXTENSION_NAME),VK_KHR_SURFACE_EXTENSION_NAME),VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+	vki::withSurfaceGLFW(vki::withDebugOutput(vki::startInstance(initstruct), DebugCallbackProc),window);
+	
 	const char* expectedDeviceExtensions[] =
 	{
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME
 	};
 
-	selectPhysicalDevices(&initstruct, NULL, NULL);
-	createDevice(&initstruct, NULL, expectedDeviceExtensions, sizeof(expectedDeviceExtensions) / sizeof(expectedDeviceExtensions[0]));
+	vki::selectPhysicalDevices(initstruct);
+	vki::createDevice(initstruct, nullptr, expectedDeviceExtensions, sizeof(expectedDeviceExtensions)/sizeof(expectedDeviceExtensions[0]));
 
 
 	VkQueue graphicsQueue;
 	VkQueue presentationQueue;
 
 	{
-		DefaultQueueRetrieveStruct queues = { 0 };
-		retrieveQueues(&initstruct, &queues, NULL);
+		vki::DefaultQueueRetrieveStruct queues{};
+		vki::retrieveQueues(initstruct, queues);
 		graphicsQueue = queues.graphicsQueue;
 		presentationQueue = queues.presentationQueue;
 	}
@@ -57,8 +57,7 @@ int main()
 	VkImage* swapchainImages;
 	VkImageView* swapchainImageViews;
 	uint32_t swapchainImageCount;
-	VkSwapchainKHR swapchain = createSwapchainKHR(&initstruct, NULL, NULL, SurfaceOptions, &swapchainImageCount, &swapchainImages, &swapchainImageViews);
-
+	VkSwapchainKHR swapchain = vki::createSwapchainKHR(initstruct, nullptr, nullptr, SurfaceOptions,swapchainImageCount,swapchainImages,swapchainImageViews);
 
 
 	while (!glfwWindowShouldClose(window))
@@ -67,8 +66,8 @@ int main()
 	}
 
 	for (uint32_t i = 0; i < swapchainImageCount; ++i)
-		vkDestroyImageView(initstruct.device, swapchainImageViews[i], NULL);
-	vkDestroySwapchainKHR(initstruct.device, swapchain, NULL);
+		vkDestroyImageView(initstruct.device,swapchainImageViews[i], nullptr);
+	vkDestroySwapchainKHR(initstruct.device,swapchain, nullptr);
 	terminateInstance(&initstruct);
 	glfwTerminate();
 }
