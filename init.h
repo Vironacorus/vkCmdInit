@@ -44,7 +44,7 @@ Defines:
 
 #ifdef VKCMDINIT_GLFW
 #define GLFW_INCLUDE_VULKAN
-#include "glfw3.h"
+#include <glfw3.h>
 #endif
 
 #include <stdbool.h>
@@ -75,58 +75,58 @@ extern "C" {
 
 #endif
 
-		//DO NOT use if you specified custom deviceDesigner in createDevice
-		typedef struct DefaultQueueRetrieveStruct
-		{
-			VkQueue graphicsQueue;
-			VkQueue presentationQueue;
-		} DefaultQueueRetrieveStruct;
+	//DO NOT use if you specified custom deviceDesigner in createDevice
+	typedef struct DefaultQueueRetrieveStruct
+	{
+		VkQueue graphicsQueue;
+		VkQueue presentationQueue;
+	} DefaultQueueRetrieveStruct;
 
-		//DO NOT use if you specified custom deviceDesigner in createDevice
-		typedef struct DefaultQueueIndices
-		{
-			uint32_t graphicQueueIndex;
-			uint32_t presentationFamilyIndex;
-		} DefaultQueueIndices;
+	//DO NOT use if you specified custom deviceDesigner in createDevice
+	typedef struct DefaultQueueIndices
+	{
+		uint32_t graphicQueueIndex;
+		uint32_t presentationFamilyIndex;
+	} DefaultQueueIndices;
 
-		//Struct containing all initialization data
-		typedef struct InitializationStruct
-		{
+	//Struct containing all initialization data
+	typedef struct InitializationStruct
+	{
 
-			struct //EarlyInit
+		struct //EarlyInit
+		{
+			VkApplicationInfo appInfo;
+			VkInstanceCreateInfo instanceInfo;
+			uint32_t extensionCount;
+			const char** extensionPtr;
+		};
+
+		union
+		{
+			void* queueIndices;
+			DefaultQueueIndices* defaultQueueIndices;
+		};
+
+		struct //InstanceOptional
+		{
+			InstanceOptionalFlags instanceOptionalFlags;
+
+			struct //DebugOutput
 			{
-				VkApplicationInfo appInfo;
-				VkInstanceCreateInfo instanceInfo;
-				uint32_t extensionCount;
-				const char** extensionPtr;
+				VkDebugUtilsMessengerEXT debugMessenger;
 			};
 
-			union
+			struct //Surface
 			{
-				void* queueIndices;
-				DefaultQueueIndices* defaultQueueIndices;
+				VkSurfaceKHR surface;
 			};
+		};
 
-			struct //InstanceOptional
-			{
-				InstanceOptionalFlags instanceOptionalFlags;
+		VkInstance instance;
+		VkPhysicalDevice physicalDevice;
+		VkDevice device;
 
-				struct //DebugOutput
-				{
-					VkDebugUtilsMessengerEXT debugMessenger;
-				};
-
-				struct //Surface
-				{
-					VkSurfaceKHR surface;
-				};
-			};
-
-			VkInstance instance;
-			VkPhysicalDevice physicalDevice;
-			VkDevice device;
-
-		} InitializationStruct;
+	} InitializationStruct;
 
 	//Creates instance of InitialziationStruct with basic application information
 	InitializationStruct createApplication(
@@ -173,7 +173,8 @@ extern "C" {
 	void retrieveQueues(
 		InitializationStruct* initStruct,
 		/*if queueRetriever isn't custom, should be array of a graphics queue and a presentation queue (non-initialized if VkSurfaceKHR isn't present)*/ VkQueue* queues,
-		/*can be null if createDevice was called with deviceDesigner = null, otherwise you need to supply own retriewer*/ void(*queueRetriever)(void* queueIndices, VkDevice device, VkQueue* queues)
+		uint32_t** familyIndices,
+		/*can be null if createDevice was called with deviceDesigner = null, otherwise you need to supply own retriewer*/ void(*queueRetriever)(void* queueIndices, VkDevice device, VkQueue* queues, uint32_t** familyIndices)
 	) CPPONLY(noexcept);
 
 	//Creates debug messenger, for simpler calls see withDebugOutput1 and withDebugOutput2
@@ -227,14 +228,14 @@ extern "C" {
 	);
 
 #ifdef VKCMDINIT_CPP
-	}
+}
 #endif
 
 #ifdef VKCMDINIT_IMPL
 #include <stdlib.h>
 
 #ifdef VKCMDINIT_CPP
-	extern "C" {
+extern "C" {
 #endif
 
 
@@ -300,11 +301,13 @@ extern "C" {
 		{
 			"VK_LAYER_KHRONOS_validation"
 		};
+		initStruct->instanceInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 		initStruct->instanceInfo.enabledLayerCount = 1;
 		initStruct->instanceInfo.ppEnabledLayerNames = validation_layers;
 		initStruct->instanceInfo.pApplicationInfo = &initStruct->appInfo;
 		initStruct->instanceInfo.ppEnabledExtensionNames = initStruct->extensionPtr;
 		initStruct->instanceInfo.enabledExtensionCount = initStruct->extensionCount;
+		initStruct->instanceInfo.pNext = NULL;
 		vkCreateInstance(&initStruct->instanceInfo, NULL, &initStruct->instance);
 		free(initStruct->extensionPtr);
 		return initStruct;
@@ -368,6 +371,7 @@ extern "C" {
 			uint32_t queueFamilyCount;
 			vkGetPhysicalDeviceQueueFamilyProperties(initStruct->physicalDevice, &queueFamilyCount, NULL);
 			VkQueueFamilyProperties* queueFamilies = (VkQueueFamilyProperties*)malloc(sizeof(VkQueueFamilyProperties) * queueFamilyCount);
+			vkGetPhysicalDeviceQueueFamilyProperties(initStruct->physicalDevice, &queueFamilyCount, queueFamilies);
 
 			uint32_t graphicQueueIndex = 0;
 			uint32_t presentationQueueIndex = 0;
@@ -394,14 +398,23 @@ extern "C" {
 
 			const float priority = 1.0f;
 
+
+
 			VkDeviceQueueCreateInfo graphicQueueCreateInfo = { ZERO };
 			graphicQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 			graphicQueueCreateInfo.pQueuePriorities = &priority;
 			graphicQueueCreateInfo.queueCount = 1;
 			graphicQueueCreateInfo.queueFamilyIndex = graphicQueueIndex;
 
-			deviceCreateInfo.queueCreateInfoCount = 1;
-			deviceCreateInfo.pQueueCreateInfos = &graphicQueueCreateInfo;
+			VkDeviceQueueCreateInfo presentQueueCreateInfo = { ZERO };
+			presentQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			presentQueueCreateInfo.pQueuePriorities = &priority;
+			presentQueueCreateInfo.queueCount = 1;
+			presentQueueCreateInfo.queueFamilyIndex = presentationQueueIndex;
+
+			VkDeviceQueueCreateInfo queueCreateinfos[] = { graphicQueueCreateInfo,presentQueueCreateInfo };
+			deviceCreateInfo.queueCreateInfoCount = (presentationQueueIndex == graphicQueueIndex) ? 1 : 2;
+			deviceCreateInfo.pQueueCreateInfos = queueCreateinfos;
 			deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
 			deviceCreateInfo.enabledExtensionCount = deviceExtensionCount;
 
@@ -419,17 +432,18 @@ extern "C" {
 		return initStruct;
 	}
 
-	void retrieveQueues(InitializationStruct* initStruct, /*if queueRetriever isn't custom, should be array of a graphics queue and a presentation queue (non-initialized if VkSurfaceKHR isn't present)*/ VkQueue* queues, /*can be null if createDevice was called with deviceDesigner = null, otherwise you need to supply own retriewer*/ void(*queueRetriever)(void* queueIndices, VkDevice device, VkQueue* queues))
+	void retrieveQueues(InitializationStruct* initStruct, /*if queueRetriever isn't custom, should be array of a graphics queue and a presentation queue (non-initialized if VkSurfaceKHR isn't present)*/ VkQueue* queues, uint32_t** familyIndices, /*can be null if createDevice was called with deviceDesigner = null, otherwise you need to supply own retriewer*/ void(*queueRetriever)(void* queueIndices, VkDevice device, VkQueue* queues, uint32_t** familyIndices))
 	{
 		if (queueRetriever)
 		{
-			queueRetriever(initStruct->queueIndices, initStruct->device, queues);
+			queueRetriever(initStruct->queueIndices, initStruct->device, queues, familyIndices);
 		}
 		else
 		{
 			vkGetDeviceQueue(initStruct->device, initStruct->defaultQueueIndices->graphicQueueIndex, 0, &queues[0]);
 			if (initStruct->instanceOptionalFlags & INSTANCE_OPTIONAL_FLAGS_SURFACE)
 				vkGetDeviceQueue(initStruct->device, initStruct->defaultQueueIndices->presentationFamilyIndex, 0, &queues[1]);
+			*((DefaultQueueIndices**)familyIndices) = initStruct->defaultQueueIndices;
 		}
 	}
 
@@ -476,7 +490,7 @@ extern "C" {
 	//FIXME: Untested
 	InitializationStruct* withSurfaceWin32(InitializationStruct* initStruct, HINSTANCE processHandle, HWND windowHandle)
 	{
-		
+
 		initStruct->instanceOptionalFlags |= INSTANCE_OPTIONAL_FLAGS_SURFACE;
 
 		VkWin32SurfaceCreateInfoKHR win32SurfaceCreateInfo = { ZERO };
@@ -527,7 +541,7 @@ extern "C" {
 						VkSurfaceFormatKHR format = surfaceFormats[i];
 						if (format.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR /*preferred*/)
 						{
-							if (format.format == VK_FORMAT_R8G8B8_UNORM || format.format == VK_FORMAT_R8G8B8_SRGB || format.format == VK_FORMAT_R8G8B8_SNORM)
+							if (format.format == VK_FORMAT_B8G8R8A8_UNORM || format.format == VK_FORMAT_B8G8R8A8_SRGB || format.format == VK_FORMAT_B8G8R8A8_SNORM)
 							{
 								chosenFormat = format;
 								break;
@@ -606,7 +620,7 @@ extern "C" {
 						VkImageViewCreateInfo swapchainImageViewCreateInfo = { ZERO };
 						swapchainImageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 						swapchainImageViewCreateInfo.image = (*swapchainImages)[i];
-						swapchainImageViewCreateInfo.components = CPPEXCLUDE( (VkComponentMapping) ){ VK_COMPONENT_SWIZZLE_R , VK_COMPONENT_SWIZZLE_G , VK_COMPONENT_SWIZZLE_B , VK_COMPONENT_SWIZZLE_A };
+						swapchainImageViewCreateInfo.components = CPPEXCLUDE((VkComponentMapping)) { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
 						swapchainImageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 						swapchainImageViewCreateInfo.format = chosenFormat.format;
 						swapchainImageViewCreateInfo.subresourceRange.levelCount = 1;
@@ -643,152 +657,153 @@ extern "C" {
 
 #if defined(VKCMDINIT_CPP)
 
-	namespace vki
+namespace vki
+{
+	//Creates instance of InitialziationStruct with basic application information
+	inline InitializationStruct createApplication(
+		const char* engineName,
+		const char* applicationName,
+		uint32_t applicationVersion,
+		uint32_t engineVersion,
+		uint32_t apiVersion
+	) CPPONLY(noexcept)
 	{
-		//Creates instance of InitialziationStruct with basic application information
-		inline InitializationStruct createApplication(
-			const char* engineName,
-			const char* applicationName,
-			uint32_t applicationVersion,
-			uint32_t engineVersion,
-			uint32_t apiVersion
-		) CPPONLY(noexcept)
-		{
-			return ::createApplication(engineName, applicationName, applicationVersion,engineVersion,apiVersion);
-		}
+		return ::createApplication(engineName, applicationName, applicationVersion, engineVersion, apiVersion);
+	}
 
-		//Adds instance extension, for device extensions see createDevice
-		inline InitializationStruct& addExtension(
-			InitializationStruct& initStruct,
-			const char* extensionName
-		) CPPONLY(noexcept)
-		{
-			return *(addExtension(&initStruct, extensionName));
-		}
+	//Adds instance extension, for device extensions see createDevice
+	inline InitializationStruct& addExtension(
+		InitializationStruct& initStruct,
+		const char* extensionName
+	) CPPONLY(noexcept)
+	{
+		return *(addExtension(&initStruct, extensionName));
+	}
 
-		//Starts a vulkan instance with extensions provided using addExtension
-		inline InitializationStruct& startInstance(
-			InitializationStruct& initStruct
-		) CPPONLY(noexcept)
-		{
-			return *startInstance(&initStruct);
-		}
+	//Starts a vulkan instance with extensions provided using addExtension
+	inline InitializationStruct& startInstance(
+		InitializationStruct& initStruct
+	) CPPONLY(noexcept)
+	{
+		return *startInstance(&initStruct);
+	}
 
-		//Terminates vulkan instance, aswell as cleans up instance extension objects created using vkCmdInit
-		inline void terminateInstance(
-			InitializationStruct& initStruct
-		) CPPONLY(noexcept)
-		{
-			return terminateInstance(&initStruct);
-		}
+	//Terminates vulkan instance, aswell as cleans up instance extension objects created using vkCmdInit
+	inline void terminateInstance(
+		InitializationStruct& initStruct
+	) CPPONLY(noexcept)
+	{
+		return terminateInstance(&initStruct);
+	}
 
-		//Enumerates and selects a suitable physical device, provide deviceEnumerator for custom selection rules
-		inline InitializationStruct& selectPhysicalDevices(
-			InitializationStruct& initStruct,
-			/*can be NULL. If so, selects first device available*/ VkPhysicalDevice(*deviceEnumerator)(const VkPhysicalDevice* const devices,
-				size_t deviceCount, /*ex. required device extensions*/ void* additionalData) = nullptr,
-			/*if device enumerator is null, can be null, because default implementation ignores it*/ void* additionalData = nullptr
-		) CPPONLY(noexcept)
-		{
-			return *selectPhysicalDevices(&initStruct, deviceEnumerator, additionalData);
-		}
+	//Enumerates and selects a suitable physical device, provide deviceEnumerator for custom selection rules
+	inline InitializationStruct& selectPhysicalDevices(
+		InitializationStruct& initStruct,
+		/*can be NULL. If so, selects first device available*/ VkPhysicalDevice(*deviceEnumerator)(const VkPhysicalDevice* const devices,
+			size_t deviceCount, /*ex. required device extensions*/ void* additionalData) = nullptr,
+		/*if device enumerator is null, can be null, because default implementation ignores it*/ void* additionalData = nullptr
+	) CPPONLY(noexcept)
+	{
+		return *selectPhysicalDevices(&initStruct, deviceEnumerator, additionalData);
+	}
 
-		//Creates logical device with extensions provided
-		inline InitializationStruct& createDevice(
-			InitializationStruct& initStruct,
-			/*can be NULL. If so, selects first device available, returns data that will be saved in queueIndices*/ void* (*deviceDesigner)(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo* deviceCreateInfo, const char* const* deviceExtensions, uint32_t deviceExtensionCount),
-			const char* const* deviceExtensions,
-			uint32_t deviceExtensionCount
-		) CPPONLY(noexcept)
-		{
-			return *createDevice(&initStruct, deviceDesigner, deviceExtensions, deviceExtensionCount);
-		}
+	//Creates logical device with extensions provided
+	inline InitializationStruct& createDevice(
+		InitializationStruct& initStruct,
+		/*can be NULL. If so, selects first device available, returns data that will be saved in queueIndices*/ void* (*deviceDesigner)(VkPhysicalDevice physicalDevice, VkDeviceCreateInfo* deviceCreateInfo, const char* const* deviceExtensions, uint32_t deviceExtensionCount),
+		const char* const* deviceExtensions,
+		uint32_t deviceExtensionCount
+	) CPPONLY(noexcept)
+	{
+		return *createDevice(&initStruct, deviceDesigner, deviceExtensions, deviceExtensionCount);
+	}
 
-		//retrieves queues from physical device object, if deviceDesigner in createDevice call wasn't NULL, provide custom queueRetriever function
-		inline void retrieveQueues(
-			InitializationStruct& initStruct,
-			/*if queueRetriever isn't custom, should be array of a graphics queue and a presentation queue (non-initialized if VkSurfaceKHR isn't present)*/ VkQueue* queues,
-			/*can be null if createDevice was called with deviceDesigner = null, otherwise you need to supply own retriewer*/ void(*queueRetriever)(void* queueIndices, VkDevice device, VkQueue* queues)
-		) CPPONLY(noexcept)
-		{
-			retrieveQueues(&initStruct, queues, queueRetriever);
-		}
+	//retrieves queues from physical device object, if deviceDesigner in createDevice call wasn't NULL, provide custom queueRetriever function
+	inline void retrieveQueues(
+		InitializationStruct& initStruct,
+		/*if queueRetriever isn't custom, should be array of a graphics queue and a presentation queue (non-initialized if VkSurfaceKHR isn't present)*/ VkQueue* queues,
+		uint32_t** familyIndices,
+		/*can be null if createDevice was called with deviceDesigner = null, otherwise you need to supply own retriewer*/ void(*queueRetriever)(void* queueIndices, VkDevice device, VkQueue* queues, uint32_t** familyIndices) = nullptr
+	) CPPONLY(noexcept)
+	{
+		::retrieveQueues(&initStruct,queues,familyIndices, queueRetriever);
+	}
 
 
-		//retrieves queues from physical device object, if deviceDesigner in createDevice call wasn't NULL, provide custom queueRetriever function
-		inline void retrieveQueues(
-			InitializationStruct& initStruct,
-			/*if queueRetriever isn't custom, should be array of a graphics queue and a presentation queue (non-initialized if VkSurfaceKHR isn't present)*/ DefaultQueueRetrieveStruct& queues,
-			/*can be null if createDevice was called with deviceDesigner = null, otherwise you need to supply own retriewer*/ void(*queueRetriever)(void* queueIndices, VkDevice device, VkQueue* queues) = nullptr
-		) CPPONLY(noexcept)
-		{
-			retrieveQueues(&initStruct, (VkQueue*)&queues, queueRetriever);
-		}
+	//retrieves queues from physical device object, if deviceDesigner in createDevice call wasn't NULL, provide custom queueRetriever function
+	inline void retrieveQueues(
+		InitializationStruct& initStruct,
+		/*if queueRetriever isn't custom, should be array of a graphics queue and a presentation queue (non-initialized if VkSurfaceKHR isn't present)*/ DefaultQueueRetrieveStruct& queues,
+		uint32_t** familyIndices,
+		/*can be null if createDevice was called with deviceDesigner = null, otherwise you need to supply own retriewer*/ void(*queueRetriever)(void* queueIndices, VkDevice device, VkQueue* queues, uint32_t** familyIndices) = nullptr
+	) CPPONLY(noexcept)
+	{
+		::retrieveQueues(&initStruct,(VkQueue*)&queues, familyIndices, queueRetriever);
+	}
+	//Creates debug messenger, for simpler calls see withDebugOutput1 and withDebugOutput2
+	inline InitializationStruct& withDebugOutput(
+		InitializationStruct& initStruct,
+		PFN_vkDebugUtilsMessengerCallbackEXT debugOutputProc,
+		void* userData,
+		VkDebugUtilsMessageSeverityFlagsEXT messageSeverity,
+		VkDebugUtilsMessageTypeFlagsEXT messageType
+	) CPPONLY(noexcept)
+	{
+		return *withDebugOutput(&initStruct, debugOutputProc, userData, messageSeverity, messageType);
+	}
 
-		//Creates debug messenger, for simpler calls see withDebugOutput1 and withDebugOutput2
-		inline InitializationStruct& withDebugOutput(
-			InitializationStruct& initStruct,
-			PFN_vkDebugUtilsMessengerCallbackEXT debugOutputProc,
-			void* userData,
-			VkDebugUtilsMessageSeverityFlagsEXT messageSeverity,
-			VkDebugUtilsMessageTypeFlagsEXT messageType
-		) CPPONLY(noexcept)
-		{
-			return *withDebugOutput(&initStruct, debugOutputProc, userData, messageSeverity, messageType);
-		}
-
-		//Creates debug messenger with default settings and pointer to user data, for call without userData see withDebugOutput2
-		inline InitializationStruct& withDebugOutput(
-			InitializationStruct& initStruct,
-			PFN_vkDebugUtilsMessengerCallbackEXT debugOutputProc,
-			void* userData = nullptr
-		) CPPONLY(noexcept)
-		{
-			return *withDebugOutput1(&initStruct, debugOutputProc, userData);
-		}
+	//Creates debug messenger with default settings and pointer to user data, for call without userData see withDebugOutput2
+	inline InitializationStruct& withDebugOutput(
+		InitializationStruct& initStruct,
+		PFN_vkDebugUtilsMessengerCallbackEXT debugOutputProc,
+		void* userData = nullptr
+	) CPPONLY(noexcept)
+	{
+		return *withDebugOutput1(&initStruct, debugOutputProc, userData);
+	}
 
 
 
 #ifdef VKCMDINIT_GLFW
-		//Creates window surface using GLFWwindow (platform-independent)
-		inline InitializationStruct& withSurfaceGLFW(
-			InitializationStruct& initStruct,
-			GLFWwindow* window
-		) CPPONLY(noexcept)
-		{
-			return *(withSurfaceGLFW(&initStruct, window));
-		}
+	//Creates window surface using GLFWwindow (platform-independent)
+	inline InitializationStruct& withSurfaceGLFW(
+		InitializationStruct& initStruct,
+		GLFWwindow* window
+	) CPPONLY(noexcept)
+	{
+		return *(withSurfaceGLFW(&initStruct, window));
+	}
 #endif
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
-		//Creates window surface for Win32 platform-dependent window
-		inline InitializationStruct& withSurfaceWin32(
-			InitializationStruct& initStruct,
-			HINSTANCE processHandle,
-			HWND windowHandle
-		) CPPONLY(noexcept)
-		{
-			return *(withSurfaceWin32(&initStruct, processHandle, windowHandle));
+	//Creates window surface for Win32 platform-dependent window
+	inline InitializationStruct& withSurfaceWin32(
+		InitializationStruct& initStruct,
+		HINSTANCE processHandle,
+		HWND windowHandle
+	) CPPONLY(noexcept)
+	{
+		return *(withSurfaceWin32(&initStruct, processHandle, windowHandle));
 
-		}
+	}
 #endif
-		//Creates generic swapchain and retrieves images and image views from it
-		inline VkSwapchainKHR createSwapchainKHR(
-			InitializationStruct& initStruct,
-			/*can be null, if so, uses default selector*/ VkSurfaceFormatKHR(*surfaceFormatSelector)(VkSurfaceFormatKHR* surfaceFormats, size_t surfaceFormatCount),
-			/*can be null, if so, uses default selector*/ VkPresentModeKHR(*presentModeSelector)(VkPresentModeKHR* presentModes, size_t presentModeCount),
-			/*cannot be null*/ void(*surfaceDesigner)(const VkSurfaceCapabilitiesKHR* capabilities, VkExtent2D* extent, uint32_t* imageCount),
-			uint32_t& swapchainImageCount,
-			VkImage*& swapchainImages,
-			/*can be null*/ VkImageView*& swapchainImageViews
-		) CPPONLY(noexcept)
-		{
-			return createSwapchainKHR(&initStruct,surfaceFormatSelector,presentModeSelector,surfaceDesigner,&swapchainImageCount,&swapchainImages, &swapchainImageViews);
-		}
+	//Creates generic swapchain and retrieves images and image views from it
+	inline VkSwapchainKHR createSwapchainKHR(
+		InitializationStruct& initStruct,
+		/*can be null, if so, uses default selector*/ VkSurfaceFormatKHR(*surfaceFormatSelector)(VkSurfaceFormatKHR* surfaceFormats, size_t surfaceFormatCount),
+		/*can be null, if so, uses default selector*/ VkPresentModeKHR(*presentModeSelector)(VkPresentModeKHR* presentModes, size_t presentModeCount),
+		/*cannot be null*/ void(*surfaceDesigner)(const VkSurfaceCapabilitiesKHR* capabilities, VkExtent2D* extent, uint32_t* imageCount),
+		uint32_t& swapchainImageCount,
+		VkImage*& swapchainImages,
+		/*can be null*/ VkImageView*& swapchainImageViews
+	) CPPONLY(noexcept)
+	{
+		return createSwapchainKHR(&initStruct, surfaceFormatSelector, presentModeSelector, surfaceDesigner, &swapchainImageCount, &swapchainImages, &swapchainImageViews);
+	}
 
-		using InitializationStruct = ::InitializationStruct;
-		using DefaultQueueRetrieveStruct = ::DefaultQueueRetrieveStruct;
+	using InitializationStruct = ::InitializationStruct;
+	using DefaultQueueRetrieveStruct = ::DefaultQueueRetrieveStruct;
 
-		};
+};
 
 #endif

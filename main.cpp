@@ -46,10 +46,11 @@ int main()
 
 	VkQueue graphicsQueue;
 	VkQueue presentationQueue;
+	uint32_t* families;
 
 	{
 		vki::DefaultQueueRetrieveStruct queues{};
-		vki::retrieveQueues(initstruct, queues);
+		vki::retrieveQueues(initstruct,queues,&families,nullptr);
 		graphicsQueue = queues.graphicsQueue;
 		presentationQueue = queues.presentationQueue;
 	}

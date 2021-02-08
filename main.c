@@ -46,10 +46,11 @@ int main()
 
 	VkQueue graphicsQueue;
 	VkQueue presentationQueue;
+	uint32_t* families;
 
 	{
 		DefaultQueueRetrieveStruct queues = { 0 };
-		retrieveQueues(&initstruct, &queues, NULL);
+		retrieveQueues(&initstruct, &queues, &families , NULL);
 		graphicsQueue = queues.graphicsQueue;
 		presentationQueue = queues.presentationQueue;
 	}
